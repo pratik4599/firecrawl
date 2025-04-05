@@ -4,6 +4,7 @@ import { scrapeURL } from "../../scraper/scrapeURL";
 import { ScrapeOptions } from "../v1/types";
 import { authenticateUser } from "../auth";
 import { RateLimiterMode } from "../../types";
+import { Engine } from "../../scraper/scrapeURL/engines";
 
 /**
  * Controller for getting a screenshot as base64 without storing it
@@ -40,6 +41,22 @@ export async function getScreenshotAsBase64Controller(req: Request, res: Respons
       blockAds: true,
       fastMode: false
     };
+    
+    // Determine which engines to use
+    let forceEngine: Engine[] | undefined;
+    
+    // Check if we have fire-engine available
+    if (process.env.FIRE_ENGINE_BETA_URL) {
+      forceEngine = ["fire-engine;playwright" as Engine];
+    } 
+    // Check if we have playwright microservice available
+    else if (process.env.PLAYWRIGHT_MICROSERVICE_URL) {
+      forceEngine = ["playwright" as Engine];
+    }
+    // Check if we have ScrapingBee available
+    else if (process.env.SCRAPING_BEE_API_KEY) {
+      forceEngine = ["scrapingbee" as Engine];
+    }
 
     const result = await scrapeURL(
       `screenshot-base64-${auth.team_id}`,
@@ -48,7 +65,9 @@ export async function getScreenshotAsBase64Controller(req: Request, res: Respons
       {
         teamId: auth.team_id,
         // Skip the upload transformer
-        skipTransformers: ["uploadScreenshot"]
+        skipTransformers: ["uploadScreenshot"],
+        // Force specific engine that supports screenshots
+        forceEngine: forceEngine
       }
     );
 
