@@ -1,10 +1,9 @@
 import { Request, Response } from "express";
 import { logger } from "../../lib/logger";
-import { scrapeURL } from "../../scraper/scrapeURL";
-import { ScrapeOptions } from "../v1/types";
 import { authenticateUser } from "../auth";
 import { RateLimiterMode } from "../../types";
-import { Engine } from "../../scraper/scrapeURL/engines";
+import axios from "axios";
+import * as puppeteer from "puppeteer";
 
 /**
  * Controller for getting a screenshot as base64 without storing it
@@ -27,64 +26,112 @@ export async function getScreenshotAsBase64Controller(req: Request, res: Respons
       });
     }
 
-    // Use the existing scrapeURL function but intercept before storage
-    const options: ScrapeOptions = {
-      formats: [fullPage ? "screenshot@fullPage" : "screenshot"],
-      waitFor: waitFor || 0,
-      timeout: timeout || undefined,
-      headers: headers || undefined,
-      mobile: mobile || false,
-      onlyMainContent: false,
-      parsePDF: true,
-      skipTlsVerification: false,
-      removeBase64Images: false,
-      blockAds: true,
-      fastMode: false
-    };
-    
-    // Determine which engines to use
-    let forceEngine: Engine[] | undefined;
-    
-    // Check if we have fire-engine available
-    if (process.env.FIRE_ENGINE_BETA_URL) {
-      forceEngine = ["fire-engine;playwright" as Engine];
-    } 
-    // Check if we have playwright microservice available
-    else if (process.env.PLAYWRIGHT_MICROSERVICE_URL) {
-      forceEngine = ["playwright" as Engine];
-    }
-    // Check if we have ScrapingBee available
-    else if (process.env.SCRAPING_BEE_API_KEY) {
-      forceEngine = ["scrapingbee" as Engine];
-    }
-
-    const result = await scrapeURL(
-      `screenshot-base64-${auth.team_id}`,
-      url,
-      options,
-      {
-        teamId: auth.team_id,
-        // Skip the upload transformer
-        skipTransformers: ["uploadScreenshot"],
-        // Force specific engine that supports screenshots
-        forceEngine: forceEngine
-      }
-    );
-
-    if (result.success && result.document.screenshot) {
-      // Return the base64 data directly
-      return res.status(200).json({
-        success: true,
-        data: {
-          base64: result.document.screenshot
+    // Try to take a screenshot using Playwright service if available
+    if (process.env.PLAYWRIGHT_MICROSERVICE_URL) {
+      try {
+        logger.info(`Taking screenshot of ${url} using Playwright microservice`);
+        
+        // Launch a browser directly
+        const browser = await puppeteer.launch({
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+        
+        try {
+          const page = await browser.newPage();
+          
+          // Set mobile viewport if requested
+          if (mobile) {
+            await page.setViewport({
+              width: 375,
+              height: 667,
+              isMobile: true,
+              hasTouch: true
+            });
+          }
+          
+          // Set custom headers if provided
+          if (headers && Object.keys(headers).length > 0) {
+            await page.setExtraHTTPHeaders(headers);
+          }
+          
+          // Navigate to the URL
+          await page.goto(url, {
+            waitUntil: 'networkidle0',
+            timeout: timeout || 30000
+          });
+          
+          // Wait additional time if specified
+          if (waitFor && waitFor > 0) {
+            await new Promise(resolve => setTimeout(resolve, waitFor));
+          }
+          
+          // Take screenshot
+          const screenshotBuffer = await page.screenshot({ 
+            fullPage: fullPage || false,
+            type: 'png',
+            encoding: 'binary'
+          });
+          
+          // Convert to base64
+          const base64Data = `data:image/png;base64,${screenshotBuffer.toString('base64')}`;
+          
+          await browser.close();
+          
+          return res.status(200).json({
+            success: true,
+            data: {
+              base64: base64Data
+            }
+          });
+        } catch (err) {
+          await browser.close();
+          throw err;
         }
-      });
-    } else {
-      return res.status(500).json({
-        success: false,
-        error: !result.success ? result.error.message || "Failed to capture screenshot" : "Failed to capture screenshot"
-      });
+      } catch (playwrightError) {
+        logger.error("Error using Playwright for screenshot", { error: playwrightError });
+        // Fall through to try other methods
+      }
     }
+    
+    // If we reach here, try using axios to call a remote service
+    try {
+      // Try using Fire Engine if available
+      if (process.env.FIRE_ENGINE_BETA_URL) {
+        logger.info(`Taking screenshot of ${url} using Fire Engine`);
+        
+        const fireEngineResponse = await axios.post(
+          `${process.env.FIRE_ENGINE_BETA_URL}/screenshot`, 
+          {
+            url,
+            fullPage: fullPage || false,
+            waitFor: waitFor || 0,
+            timeout: timeout || 30000,
+            headers: headers || {},
+            mobile: mobile || false
+          },
+          { timeout: (timeout || 30000) + 5000 }
+        );
+        
+        if (fireEngineResponse.data && fireEngineResponse.data.screenshot) {
+          return res.status(200).json({
+            success: true,
+            data: {
+              base64: fireEngineResponse.data.screenshot
+            }
+          });
+        }
+      }
+    } catch (axiosError) {
+      logger.error("Error using Fire Engine for screenshot", { error: axiosError });
+      // Fall through to the error response
+    }
+    
+    // If we reach here, all methods failed
+    return res.status(500).json({
+      success: false,
+      error: "Failed to capture screenshot. All available methods failed."
+    });
   } catch (error: any) {
     logger.error("Error in getScreenshotAsBase64Controller", { error });
     return res.status(500).json({
