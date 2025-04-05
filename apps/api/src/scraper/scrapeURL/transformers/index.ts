@@ -187,6 +187,12 @@ export async function executeTransformers(
   const executions: [string, number][] = [];
 
   for (const transformer of transformerStack) {
+    // Skip transformers if specified in internalOptions
+    if (meta.internalOptions.skipTransformers?.includes(transformer.name)) {
+      meta.logger.debug(`Skipping transformer: ${transformer.name}`);
+      continue;
+    }
+
     const _meta = {
       ...meta,
       logger: meta.logger.child({

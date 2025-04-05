@@ -1,7 +1,7 @@
 import express, { NextFunction, Request, Response } from "express";
 import { crawlController } from "../controllers/v1/crawl";
 // import { crawlStatusController } from "../../src/controllers/v1/crawl-status";
-import { scrapeController } from "../../src/controllers/v1/scrape";
+import { scrapeController } from "../controllers/v1/scrape";
 import { crawlStatusController } from "../controllers/v1/crawl-status";
 import { mapController } from "../controllers/v1/map";
 import {
@@ -34,6 +34,7 @@ import { generateLLMsTextStatusController } from "../controllers/v1/generate-llm
 import { deepResearchController } from "../controllers/v1/deep-research";
 import { deepResearchStatusController } from "../controllers/v1/deep-research-status";
 import { tokenUsageController } from "../controllers/v1/token-usage";
+import { getScreenshotAsBase64Controller } from "../controllers/v1/screenshot";
 
 function checkCreditsMiddleware(
   minimum?: number,
@@ -309,4 +310,12 @@ v1Router.get(
   "/team/token-usage",
   authMiddleware(RateLimiterMode.ExtractStatus),
   wrap(tokenUsageController),
+);
+
+v1Router.post(
+  "/screenshot/base64",
+  authMiddleware(RateLimiterMode.Scrape),
+  checkCreditsMiddleware(1),
+  blocklistMiddleware,
+  wrap(getScreenshotAsBase64Controller),
 );

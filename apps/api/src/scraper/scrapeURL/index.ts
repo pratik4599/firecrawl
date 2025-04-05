@@ -176,6 +176,7 @@ export type InternalOptions = {
   fromCache?: boolean; // Indicates if the document was retrieved from cache
   abort?: AbortSignal;
   urlInvisibleInCurrentCrawl?: boolean;
+  skipTransformers?: string[]; // Names of transformers to skip
 };
 
 export type EngineResultsTracker = {

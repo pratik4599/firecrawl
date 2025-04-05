@@ -75,7 +75,7 @@ To use the API, you need to sign up on [Firecrawl](https://firecrawl.dev) and ge
 - [**Extract**](#extract): get structured data from single page, multiple pages or entire websites with AI.
 
 ### Powerful Capabilities
-- **LLM-ready formats**: markdown, structured data, screenshot, HTML, links, metadata
+- **LLM-ready formats**: markdown, structured data, screenshot (stored or base64), HTML, links, metadata
 - **The hard stuff**: proxies, anti-bot mechanisms, dynamic content (js-rendered), output parsing, orchestration
 - **Customizability**: exclude tags, crawl behind auth walls with custom headers, max crawl depth, etc...
 - **Media parsing**: pdfs, docx, images
@@ -433,6 +433,34 @@ curl -X POST https://api.firecrawl.dev/v1/batch/scrape \
       "urls": ["https://docs.firecrawl.dev", "https://docs.firecrawl.dev/sdks/overview"],
       "formats" : ["markdown", "html"]
     }'
+```
+
+### Screenshot as Base64
+
+Get a screenshot of a URL as base64 data without storing it. This is useful for immediate processing or when you need the raw image data without an additional HTTP request.
+
+```bash
+curl -X POST https://api.firecrawl.dev/v1/screenshot/base64 \
+    -H 'Content-Type: application/json' \
+    -H 'Authorization: Bearer YOUR_API_KEY' \
+    -d '{
+      "url": "https://firecrawl.dev",
+      "fullPage": true,
+      "waitFor": 1000,
+      "timeout": 30000,
+      "mobile": false
+    }'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..." // truncated for brevity
+  }
+}
 ```
 
 ### Search

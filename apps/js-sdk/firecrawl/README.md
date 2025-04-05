@@ -145,6 +145,32 @@ watch.addEventListener("done", state => {
 });
 ```
 
+### Getting a Screenshot as Base64
+
+To get a screenshot of a URL as base64 data without storing it, use the `getScreenshotAsBase64` method. This is useful when you need the raw image data for immediate processing without an additional HTTP request to fetch a stored image.
+
+```js
+const screenshotResult = await app.getScreenshotAsBase64('https://example.com', {
+  fullPage: true,  // Optional: capture full page instead of just viewport
+  waitFor: 1000,   // Optional: wait time in milliseconds after page load
+  timeout: 30000,  // Optional: timeout in milliseconds
+  headers: {       // Optional: custom headers
+    'User-Agent': 'Custom User Agent'
+  },
+  mobile: false    // Optional: use mobile viewport
+});
+
+if (screenshotResult.success) {
+  // Use the base64 data directly
+  const base64Data = screenshotResult.base64;
+  // Example: embed in HTML
+  const imgTag = `<img src="${base64Data}" alt="Screenshot" />`;
+  // Example: save to file (Node.js)
+  // const buffer = Buffer.from(base64Data.split(',')[1], 'base64');
+  // fs.writeFileSync('screenshot.png', buffer);
+}
+```
+
 ### Batch scraping multiple URLs
 
 To batch scrape multiple URLs with error handling, use the `batchScrapeUrls` method. It takes the starting URLs and optional parameters as arguments. The `params` argument allows you to specify additional options for the batch scrape job, such as the output formats.

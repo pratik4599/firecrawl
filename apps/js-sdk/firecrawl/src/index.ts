@@ -929,6 +929,61 @@ export default class FirecrawlApp {
    * @param ignoreInvalidURLs - Optional flag to ignore invalid URLs.
    * @returns The response from the crawl operation.
    */
+  /**
+   * Gets a screenshot of a URL as base64 data without storing it.
+   * @param url - The URL to capture a screenshot of.
+   * @param options - Options for the screenshot capture.
+   * @returns A promise that resolves to the screenshot response.
+   */
+  async getScreenshotAsBase64(
+    url: string,
+    options?: {
+      fullPage?: boolean;
+      waitFor?: number;
+      timeout?: number;
+      headers?: Record<string, string>;
+      mobile?: boolean;
+    }
+  ): Promise<{ success: boolean; base64?: string; error?: string }> {
+    const headers: AxiosRequestHeaders = this.prepareHeaders();
+
+    try {
+      const response: AxiosResponse = await this.postRequest(
+        this.apiUrl + `/v1/screenshot/base64`,
+        {
+          url,
+          fullPage: options?.fullPage || false,
+          waitFor: options?.waitFor || 0,
+          timeout: options?.timeout,
+          headers: options?.headers,
+          mobile: options?.mobile || false
+        },
+        headers
+      );
+
+      if (response.status === 200) {
+        const responseData = response.data;
+        if (responseData.success) {
+          return {
+            success: true,
+            base64: responseData.data.base64
+          };
+        } else {
+          throw new FirecrawlError(`Failed to get screenshot. Error: ${responseData.error}`, response.status);
+        }
+      } else {
+        this.handleError(response, "get screenshot as base64");
+      }
+    } catch (error: any) {
+      if (error instanceof AxiosError && error.response) {
+        this.handleError(error.response, "get screenshot as base64");
+      } else {
+        throw new FirecrawlError(error.message, 500);
+      }
+    }
+    return { success: false, error: "Internal server error." };
+  }
+
   async batchScrapeUrls(
     urls: string[],
     params?: ScrapeParams,
