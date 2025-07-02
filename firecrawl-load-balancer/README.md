@@ -64,14 +64,8 @@ Visit `http://localhost:5001` to see the real-time dashboard with:
 
 ### API Endpoints
 
-#### Scrape Endpoints (Load Balanced)
+#### Scrape Endpoint (Load Balanced)
 ```bash
-# V0 Scrape
-curl -X POST "http://localhost:5001/v0/scrape" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
-
 # V1 Scrape  
 curl -X POST "http://localhost:5001/v1/scrape" \
   -H "Authorization: Bearer YOUR_API_KEY" \

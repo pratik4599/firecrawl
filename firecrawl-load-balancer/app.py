@@ -268,78 +268,7 @@ def get_stats():
             'timestamp': datetime.now().isoformat()
         })
 
-@app.route('/v0/scrape', methods=['POST'])
-def scrape():
-    """Main scrape endpoint - load balances requests"""
-    instance_id = load_balancer.get_next_instance()
-    
-    if not instance_id:
-        return jsonify({'error': 'No healthy instances available'}), 503
-    
-    # Update stats
-    with stats_lock:
-        instance_stats[instance_id]['active_requests'] += 1
-        instance_stats[instance_id]['request_count'] += 1
-        instance_stats[instance_id]['total_requests'] += 1
-    
-    try:
-        # Forward request to selected instance
-        instance_url = INSTANCES[instance_id]['url']
-        
-        start_time = time.time()
-        request_timestamp = datetime.now()
-        
-        # Get URL from request body for logging
-        request_url = request.json.get('url', 'Unknown') if request.json else 'Unknown'
-        
-        response = requests.post(
-            f"{instance_url}/v0/scrape",
-            json=request.json,
-            headers={key: value for key, value in request.headers if key != 'Host'},
-            timeout=300  # 5 minute timeout
-        )
-        
-        response_time = time.time() - start_time
-        
-        # Log the request
-        with request_log_lock:
-            request_log.append({
-                'timestamp': request_timestamp.strftime('%H:%M:%S'),
-                'instance': instance_id,
-                'url': request_url[:50] + '...' if len(request_url) > 50 else request_url,
-                'status': 'Success' if response.status_code == 200 else f'Error {response.status_code}',
-                'response_time': f'{response_time:.2f}s',
-                'status_code': response.status_code
-            })
-        
-        # Update response time stats
-        with stats_lock:
-            instance_stats[instance_id]['response_times'].append(response_time)
-            instance_stats[instance_id]['active_requests'] -= 1
-        
-        # Return response
-        return jsonify(response.json()), response.status_code
-        
-    except Exception as e:
-        response_time = time.time() - start_time
-        
-        # Log the failed request
-        with request_log_lock:
-            request_log.append({
-                'timestamp': request_timestamp.strftime('%H:%M:%S'),
-                'instance': instance_id,
-                'url': request_url[:50] + '...' if len(request_url) > 50 else request_url,
-                'status': 'Failed',
-                'response_time': f'{response_time:.2f}s',
-                'status_code': 500
-            })
-        
-        with stats_lock:
-            instance_stats[instance_id]['active_requests'] -= 1
-            instance_stats[instance_id]['error_count'] += 1
-        
-        logger.error(f"Error forwarding request to {instance_id}: {e}")
-        return jsonify({'error': 'Request failed', 'details': str(e)}), 500
+
 
 @app.route('/v1/scrape', methods=['POST'])
 def scrape_v1():
@@ -437,4 +366,4 @@ def reset_stats(instance_id):
     return jsonify({'message': f'Reset stats for instance {instance_id}'})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True) 
+    app.run(host='0.0.0.0', port=5001, debug=True, threaded=True) 
