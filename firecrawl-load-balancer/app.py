@@ -216,7 +216,12 @@ def dashboard():
 def get_stats():
     """API endpoint to get current stats"""
     with stats_lock:
-        stats = dict(instance_stats)
+        # Convert deque objects to lists for JSON serialization
+        stats = {}
+        for instance_id, instance_data in instance_stats.items():
+            stats[instance_id] = dict(instance_data)
+            # Convert deque to list for JSON serialization
+            stats[instance_id]['response_times'] = list(instance_data['response_times'])
         
         # Add some computed metrics
         total_requests = sum(s['total_requests'] for s in stats.values())
