@@ -75,14 +75,30 @@ class LoadBalancer:
     def get_next_instance(self):
         """Round-robin load balancing"""
         global current_instance_index
+        
+        # Debug: Print all instance statuses
+        print("🔍 DEBUG: Instance statuses:")
+        for inst_id, data in instance_stats.items():
+            print(f"   {inst_id}: {data['status']}")
+        
         available_instances = [inst for inst, data in instance_stats.items() 
                              if data['status'] == 'healthy']
         
+        print(f"🔍 DEBUG: Available healthy instances: {available_instances}")
+        print(f"🔍 DEBUG: Current instance index: {current_instance_index}")
+        
         if not available_instances:
+            print("❌ DEBUG: No healthy instances available!")
             return None
         
-        instance = available_instances[current_instance_index % len(available_instances)]
+        selected_index = current_instance_index % len(available_instances)
+        instance = available_instances[selected_index]
         current_instance_index += 1
+        
+        print(f"🔍 DEBUG: Selected instance: {instance} (index {selected_index})")
+        print(f"🔍 DEBUG: Next instance index will be: {current_instance_index}")
+        print("=" * 50)
+        
         return instance
     
     def check_instance_health(self, instance_id):
@@ -180,9 +196,13 @@ def monitor_instances():
     """Background thread to monitor instance health and stats"""
     while True:
         try:
+            print(f"\n🏥 DEBUG: Health check cycle at {datetime.now().strftime('%H:%M:%S')}")
             for instance_id in INSTANCES.keys():
                 # Check health
                 is_healthy = load_balancer.check_instance_health(instance_id)
+                instance_url = INSTANCES[instance_id]['url']
+                
+                print(f"   {instance_id} ({instance_url}): {'✅ HEALTHY' if is_healthy else '❌ UNHEALTHY'}")
                 
                 # Get container stats
                 cpu_usage, memory_usage = load_balancer.get_container_stats(instance_id)
