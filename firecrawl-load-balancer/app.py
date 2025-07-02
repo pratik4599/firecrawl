@@ -137,10 +137,41 @@ class LoadBalancer:
             with stats_lock:
                 instance_stats[instance_id]['status'] = 'restarting'
                 instance_stats[instance_id]['last_restart'] = datetime.now()
+                initial_active_requests = instance_stats[instance_id]['active_requests']
             
-            logger.info(f"🔄 Starting restart of {instance_id} - traffic will route to other instances")
+            logger.info(f"🔄 Starting graceful restart of {instance_id}")
             logger.info(f"🔒 Restart lock acquired - no other instances can restart until this completes")
-            logger.info(f"📜 Using restart script (estimated time: ~35 seconds)")
+            logger.info(f"🚦 Stopping new traffic to {instance_id} - other instances will handle new requests")
+            
+            # Wait for active requests to complete (graceful shutdown)
+            if initial_active_requests > 0:
+                logger.info(f"⏳ Waiting for {initial_active_requests} active requests to complete...")
+                wait_start_time = time.time()
+                timeout_seconds = 300  # 5 minutes max wait
+                
+                while True:
+                    with stats_lock:
+                        current_active = instance_stats[instance_id]['active_requests']
+                    
+                    if current_active == 0:
+                        wait_duration = time.time() - wait_start_time
+                        logger.info(f"✅ All active requests completed in {wait_duration:.1f}s")
+                        break
+                    
+                    elapsed = time.time() - wait_start_time
+                    if elapsed > timeout_seconds:
+                        logger.warning(f"⚠️ Timeout reached ({timeout_seconds}s) - proceeding with restart despite {current_active} active requests")
+                        break
+                    
+                    # Log progress every 10 seconds
+                    if int(elapsed) % 10 == 0 and elapsed >= 10:
+                        logger.info(f"⏳ Still waiting... {current_active} requests active (waited {elapsed:.0f}s)")
+                    
+                    time.sleep(1)  # Check every second
+            else:
+                logger.info(f"✅ No active requests - proceeding immediately with restart")
+            
+            logger.info(f"📜 Starting Docker restart (estimated time: ~35 seconds)")
             
             # Get the path to the restart script
             script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -163,7 +194,7 @@ class LoadBalancer:
                 instance_stats[instance_id]['request_count'] = 0
                 instance_stats[instance_id]['status'] = 'healthy'
             
-            logger.info(f"✅ {instance_id} restart completed successfully and ready for traffic")
+            logger.info(f"✅ {instance_id} graceful restart completed successfully and ready for traffic")
             
         except subprocess.CalledProcessError as e:
             logger.error(f"❌ Restart script failed for {instance_id}: {e}")
