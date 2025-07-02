@@ -70,10 +70,38 @@ FIRECRAWL_PATH = '/home/aqdev/pratik/firescale/firecrawl'
 class LoadBalancer:
     def __init__(self):
         self.docker_client = None
+        self.sudo_password = "zaq12wsx"  # Sudo password for Docker commands
         try:
             self.docker_client = docker.from_env()
         except Exception as e:
             logger.warning(f"Docker client not available: {e}")
+    
+    def _run_docker_command(self, cmd):
+        """Run Docker command with sudo authentication"""
+        try:
+            # First try without sudo (in case user is already in docker group)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            return result
+        except subprocess.CalledProcessError:
+            # If that fails, try with sudo
+            logger.info(f"🔐 Using sudo for Docker command: {' '.join(cmd)}")
+            sudo_cmd = ['sudo', '-S'] + cmd
+            
+            process = subprocess.Popen(
+                sudo_cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            stdout, stderr = process.communicate(input=f"{self.sudo_password}\n")
+            
+            if process.returncode != 0:
+                logger.error(f"Docker command failed: {stderr}")
+                raise subprocess.CalledProcessError(process.returncode, sudo_cmd, stderr)
+            
+            return process
     
     def get_next_instance(self):
         """Round-robin load balancing"""
@@ -134,9 +162,9 @@ class LoadBalancer:
             
             # Stop and remove all containers and networks
             logger.info(f"🛑 Stopping and cleaning up {instance_id}...")
-            subprocess.run([
+            self._run_docker_command([
                 'docker', 'compose', '-f', compose_file, 'down', '--remove-orphans', '--volumes'
-            ], check=True)
+            ])
             
             # Additional cleanup: force remove any containers that might still exist
             logger.info(f"🧹 Force cleaning any remaining containers for {instance_id}...")
@@ -150,9 +178,12 @@ class LoadBalancer:
                 ]
                 
                 for container_name in container_names:
-                    subprocess.run([
-                        'docker', 'rm', '-f', container_name
-                    ], check=False, capture_output=True)  # Don't fail if container doesn't exist
+                    try:
+                        self._run_docker_command([
+                            'docker', 'rm', '-f', container_name
+                        ])
+                    except:
+                        pass  # Don't fail if container doesn't exist
             except Exception as cleanup_error:
                 logger.warning(f"⚠️ Container cleanup warning (non-critical): {cleanup_error}")
             
@@ -162,9 +193,9 @@ class LoadBalancer:
             
             # Start instance with force recreate
             logger.info(f"🚀 Starting {instance_id} with fresh containers...")
-            subprocess.run([
+            self._run_docker_command([
                 'docker', 'compose', '-f', compose_file, 'up', '-d', '--force-recreate'
-            ], check=True)
+            ])
             
             with stats_lock:
                 instance_stats[instance_id]['request_count'] = 0
