@@ -57,6 +57,10 @@ request_queue = defaultdict(int)
 current_instance_index = 0
 stats_lock = threading.Lock()
 
+# Request logging for dashboard
+request_log = deque(maxlen=100)  # Keep last 100 requests
+request_log_lock = threading.Lock()
+
 # Firecrawl app path - adjust this to your actual path
 FIRECRAWL_PATH = '/home/aqdev/pratik/firescale/firecrawl'
 
@@ -228,6 +232,10 @@ def get_stats():
         total_active = sum(s['active_requests'] for s in stats.values())
         healthy_instances = sum(1 for s in stats.values() if s['status'] == 'healthy')
         
+        # Get recent requests for the log table
+        with request_log_lock:
+            recent_requests = list(request_log)
+        
         return jsonify({
             'instances': stats,
             'totals': {
@@ -236,6 +244,7 @@ def get_stats():
                 'healthy_instances': healthy_instances,
                 'total_instances': len(INSTANCES)
             },
+            'recent_requests': recent_requests,
             'timestamp': datetime.now().isoformat()
         })
 
@@ -258,6 +267,10 @@ def scrape():
         instance_url = INSTANCES[instance_id]['url']
         
         start_time = time.time()
+        request_timestamp = datetime.now()
+        
+        # Get URL from request body for logging
+        request_url = request.json.get('url', 'Unknown') if request.json else 'Unknown'
         
         response = requests.post(
             f"{instance_url}/v0/scrape",
@@ -268,6 +281,17 @@ def scrape():
         
         response_time = time.time() - start_time
         
+        # Log the request
+        with request_log_lock:
+            request_log.append({
+                'timestamp': request_timestamp.strftime('%H:%M:%S'),
+                'instance': instance_id,
+                'url': request_url[:50] + '...' if len(request_url) > 50 else request_url,
+                'status': 'Success' if response.status_code == 200 else f'Error {response.status_code}',
+                'response_time': f'{response_time:.2f}s',
+                'status_code': response.status_code
+            })
+        
         # Update response time stats
         with stats_lock:
             instance_stats[instance_id]['response_times'].append(response_time)
@@ -277,6 +301,19 @@ def scrape():
         return jsonify(response.json()), response.status_code
         
     except Exception as e:
+        response_time = time.time() - start_time
+        
+        # Log the failed request
+        with request_log_lock:
+            request_log.append({
+                'timestamp': request_timestamp.strftime('%H:%M:%S'),
+                'instance': instance_id,
+                'url': request_url[:50] + '...' if len(request_url) > 50 else request_url,
+                'status': 'Failed',
+                'response_time': f'{response_time:.2f}s',
+                'status_code': 500
+            })
+        
         with stats_lock:
             instance_stats[instance_id]['active_requests'] -= 1
             instance_stats[instance_id]['error_count'] += 1
@@ -300,6 +337,10 @@ def scrape_v1():
     try:
         instance_url = INSTANCES[instance_id]['url']
         start_time = time.time()
+        request_timestamp = datetime.now()
+        
+        # Get URL from request body for logging
+        request_url = request.json.get('url', 'Unknown') if request.json else 'Unknown'
         
         response = requests.post(
             f"{instance_url}/v1/scrape",
@@ -310,6 +351,17 @@ def scrape_v1():
         
         response_time = time.time() - start_time
         
+        # Log the request
+        with request_log_lock:
+            request_log.append({
+                'timestamp': request_timestamp.strftime('%H:%M:%S'),
+                'instance': instance_id,
+                'url': request_url[:50] + '...' if len(request_url) > 50 else request_url,
+                'status': 'Success' if response.status_code == 200 else f'Error {response.status_code}',
+                'response_time': f'{response_time:.2f}s',
+                'status_code': response.status_code
+            })
+        
         with stats_lock:
             instance_stats[instance_id]['response_times'].append(response_time)
             instance_stats[instance_id]['active_requests'] -= 1
@@ -317,6 +369,19 @@ def scrape_v1():
         return jsonify(response.json()), response.status_code
         
     except Exception as e:
+        response_time = time.time() - start_time
+        
+        # Log the failed request
+        with request_log_lock:
+            request_log.append({
+                'timestamp': request_timestamp.strftime('%H:%M:%S'),
+                'instance': instance_id,
+                'url': request_url[:50] + '...' if len(request_url) > 50 else request_url,
+                'status': 'Failed',
+                'response_time': f'{response_time:.2f}s',
+                'status_code': 500
+            })
+        
         with stats_lock:
             instance_stats[instance_id]['active_requests'] -= 1
             instance_stats[instance_id]['error_count'] += 1

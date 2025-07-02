@@ -29,8 +29,8 @@ if ! docker info &> /dev/null; then
 fi
 
 echo "✅ All dependencies are ready"
-echo "🚀 Starting Flask application on http://localhost:5000"
-echo "📊 Dashboard will be available at http://localhost:5000"
+echo "🚀 Starting Flask application on http://localhost:5001"
+echo "📊 Dashboard will be available at http://localhost:5001"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""

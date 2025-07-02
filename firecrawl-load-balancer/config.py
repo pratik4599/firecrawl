@@ -5,7 +5,7 @@ FIRECRAWL_PATH = '/home/aqdev/pratik/firescale/firecrawl'
 
 # Load balancer settings
 LOAD_BALANCER_HOST = '0.0.0.0'
-LOAD_BALANCER_PORT = 5000
+LOAD_BALANCER_PORT = 5001
 
 # Instance configuration
 INSTANCES = {

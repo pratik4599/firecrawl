@@ -44,17 +44,17 @@ FIRECRAWL_PATH = '/home/aqdev/pratik/firescale/firecrawl'
 python app.py
 ```
 
-The load balancer will start on `http://localhost:5000`
+The load balancer will start on `http://localhost:5001`
 
 ### Production Deployment
 ```bash
-gunicorn -w 4 -b 0.0.0.0:5000 app:app
+gunicorn -w 4 -b 0.0.0.0:5001 app:app
 ```
 
 ## 🌐 Usage
 
 ### Dashboard
-Visit `http://localhost:5000` to see the real-time dashboard with:
+Visit `http://localhost:5001` to see the real-time dashboard with:
 - Total requests across all instances
 - Active requests currently being processed
 - Instance health status
@@ -67,13 +67,13 @@ Visit `http://localhost:5000` to see the real-time dashboard with:
 #### Scrape Endpoints (Load Balanced)
 ```bash
 # V0 Scrape
-curl -X POST "http://localhost:5000/v0/scrape" \
+curl -X POST "http://localhost:5001/v0/scrape" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com"}'
 
 # V1 Scrape  
-curl -X POST "http://localhost:5000/v1/scrape" \
+curl -X POST "http://localhost:5001/v1/scrape" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com"}'
@@ -82,13 +82,13 @@ curl -X POST "http://localhost:5000/v1/scrape" \
 #### Admin Endpoints
 ```bash
 # Get current stats
-curl http://localhost:5000/api/stats
+curl http://localhost:5001/api/stats
 
 # Manually restart an instance
-curl -X POST http://localhost:5000/admin/restart/instance1
+curl -X POST http://localhost:5001/admin/restart/instance1
 
 # Reset stats for an instance
-curl -X POST http://localhost:5000/admin/reset-stats/instance1
+curl -X POST http://localhost:5001/admin/reset-stats/instance1
 ```
 
 ## 📊 Dashboard Features

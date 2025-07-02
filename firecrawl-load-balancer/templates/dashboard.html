@@ -195,6 +195,82 @@
         .progress-cpu { background: linear-gradient(90deg, #28a745, #ffc107, #dc3545); }
         .progress-memory { background: linear-gradient(90deg, #17a2b8, #6f42c1); }
         
+        .request-log-section {
+            margin-top: 2rem;
+        }
+        
+        .request-log-table {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .request-log-table h3 {
+            margin: 0;
+            padding: 1.5rem;
+            color: #333;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .request-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        
+        .request-table th,
+        .request-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .request-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .request-table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .status-success {
+            color: #28a745;
+            font-weight: 600;
+        }
+        
+        .status-error {
+            color: #dc3545;
+            font-weight: 600;
+        }
+        
+        .status-failed {
+            color: #dc3545;
+            font-weight: 600;
+        }
+        
+        .instance-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: white;
+        }
+        
+        .instance-badge.instance1 { background-color: #667eea; }
+        .instance-badge.instance2 { background-color: #764ba2; }
+        .instance-badge.instance3 { background-color: #f093fb; }
+        
         @media (max-width: 768px) {
             .container {
                 padding: 1rem;
@@ -255,6 +331,29 @@
             <div class="chart-container">
                 <h3>Resource Usage</h3>
                 <canvas id="resourceChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Request Log -->
+        <div class="request-log-section">
+            <div class="request-log-table">
+                <h3>🔍 Real-time Request Log (Last 100 requests)</h3>
+                <div class="table-container">
+                    <table class="request-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Instance</th>
+                                <th>URL</th>
+                                <th>Status</th>
+                                <th>Response Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="request-log-body">
+                            <!-- Request rows will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -353,6 +452,9 @@
                 
                 // Update charts
                 updateCharts(data);
+                
+                // Update request log
+                updateRequestLog(data.recent_requests || []);
                 
             } catch (error) {
                 console.error('Error fetching stats:', error);
@@ -454,6 +556,31 @@
                 'instance3': 3010
             };
             return portMap[instanceId] || 'Unknown';
+        }
+        
+        function updateRequestLog(requests) {
+            const tbody = document.getElementById('request-log-body');
+            tbody.innerHTML = '';
+            
+            // Show requests in reverse order (newest first)
+            requests.reverse().forEach(req => {
+                const row = document.createElement('tr');
+                
+                const statusClass = req.status === 'Success' ? 'status-success' : 
+                                  req.status === 'Failed' ? 'status-failed' : 'status-error';
+                
+                const instanceClass = req.instance.toLowerCase();
+                
+                row.innerHTML = `
+                    <td>${req.timestamp}</td>
+                    <td><span class="instance-badge ${instanceClass}">${req.instance.toUpperCase()}</span></td>
+                    <td title="${req.url}">${req.url}</td>
+                    <td><span class="${statusClass}">${req.status}</span></td>
+                    <td>${req.response_time}</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
         }
         
         async function restartInstance(instanceId) {
