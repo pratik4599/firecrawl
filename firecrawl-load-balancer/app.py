@@ -146,9 +146,10 @@ class LoadBalancer:
             if result.stderr:
                 logger.warning(f"⚠️ Script warnings:\n{result.stderr}")
             
-            # Reset request count after successful restart
+            # Reset request count and set status to healthy after successful restart
             with stats_lock:
                 instance_stats[instance_id]['request_count'] = 0
+                instance_stats[instance_id]['status'] = 'healthy'
             
             logger.info(f"✅ {instance_id} restart completed successfully and ready for traffic")
             
