@@ -59,6 +59,8 @@ instance_stats = {
 request_queue = defaultdict(int)
 current_instance_index = 0
 stats_lock = threading.Lock()
+restart_lock = threading.Lock()  # Prevent multiple restarts at once
+restart_in_progress = False
 
 # Request logging for dashboard
 request_log = deque(maxlen=1000)  # Keep last 1000 requests
@@ -121,6 +123,15 @@ class LoadBalancer:
     
     def restart_instance(self, instance_id):
         """Restart Docker Compose instance using shell script"""
+        global restart_in_progress
+        
+        # Check if another restart is already in progress
+        with restart_lock:
+            if restart_in_progress:
+                logger.warning(f"⚠️ Restart of {instance_id} skipped - another instance is already restarting")
+                return
+            restart_in_progress = True
+        
         try:
             # Immediately mark as restarting to stop new requests
             with stats_lock:
@@ -128,6 +139,7 @@ class LoadBalancer:
                 instance_stats[instance_id]['last_restart'] = datetime.now()
             
             logger.info(f"🔄 Starting restart of {instance_id} - traffic will route to other instances")
+            logger.info(f"🔒 Restart lock acquired - no other instances can restart until this completes")
             logger.info(f"📜 Using restart script (estimated time: ~35 seconds)")
             
             # Get the path to the restart script
@@ -165,6 +177,11 @@ class LoadBalancer:
             # Set back to unhealthy if restart failed
             with stats_lock:
                 instance_stats[instance_id]['status'] = 'unhealthy'
+        finally:
+            # Always release the restart lock
+            with restart_lock:
+                restart_in_progress = False
+            logger.info(f"🔓 Restart lock released - other instances can now restart if needed")
     
     def get_container_stats(self, instance_id):
         """Get CPU and memory stats for instance containers"""
@@ -243,12 +260,18 @@ def monitor_instances():
                     restart_threshold = INSTANCES[instance_id]['restart_threshold']
                     if (instance_stats[instance_id]['request_count'] >= restart_threshold and 
                         instance_stats[instance_id]['status'] == 'healthy'):
-                        logger.info(f"🎯 Instance {instance_id} reached {restart_threshold} requests, triggering restart...")
-                        logger.info(f"🔄 Other instances will handle traffic during restart")
-                        threading.Thread(
-                            target=load_balancer.restart_instance, 
-                            args=(instance_id,)
-                        ).start()
+                        
+                        # Check if another restart is already in progress
+                        with restart_lock:
+                            if restart_in_progress:
+                                logger.info(f"⏳ Instance {instance_id} reached {restart_threshold} requests but restart delayed - another instance is restarting")
+                            else:
+                                logger.info(f"🎯 Instance {instance_id} reached {restart_threshold} requests, triggering restart...")
+                                logger.info(f"🔄 Other instances will handle traffic during restart")
+                                threading.Thread(
+                                    target=load_balancer.restart_instance, 
+                                    args=(instance_id,)
+                                ).start()
             
             time.sleep(10)  # Check every 10 seconds
             
@@ -399,6 +422,11 @@ def manual_restart(instance_id):
     """Manually restart an instance"""
     if instance_id not in INSTANCES:
         return jsonify({'error': 'Invalid instance ID'}), 400
+    
+    # Check if another restart is already in progress
+    with restart_lock:
+        if restart_in_progress:
+            return jsonify({'error': 'Another instance is already restarting. Please wait.'}), 429
     
     threading.Thread(
         target=load_balancer.restart_instance, 
