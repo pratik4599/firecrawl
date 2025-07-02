@@ -31,6 +31,13 @@ AUTO_RESTART_THRESHOLD = 100  # Restart after this many requests
 HEALTH_CHECK_INTERVAL = 10    # Seconds between health checks
 REQUEST_TIMEOUT = 300         # Seconds for request timeout
 
+# Failover behavior
+# When an instance restarts:
+# 1. Status immediately set to 'restarting'
+# 2. No new requests routed to restarting instance
+# 3. Other healthy instances handle all traffic
+# 4. Instance rejoins rotation when restart completes
+
 # Dashboard settings
 DASHBOARD_REFRESH_INTERVAL = 10  # Seconds
 MAX_RESPONSE_TIME_SAMPLES = 100  # Keep last N response times per instance

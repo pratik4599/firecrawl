@@ -58,7 +58,7 @@ current_instance_index = 0
 stats_lock = threading.Lock()
 
 # Request logging for dashboard
-request_log = deque(maxlen=100)  # Keep last 100 requests
+request_log = deque(maxlen=1000)  # Keep last 1000 requests
 request_log_lock = threading.Lock()
 
 # Firecrawl app path - adjust this to your actual path
@@ -84,7 +84,11 @@ class LoadBalancer:
         available_instances = [inst for inst, data in instance_stats.items() 
                              if data['status'] == 'healthy']
         
+        restarting_instances = [inst for inst, data in instance_stats.items() 
+                              if data['status'] == 'restarting']
+        
         print(f"🔍 DEBUG: Available healthy instances: {available_instances}")
+        print(f"🔍 DEBUG: Restarting instances (excluded): {restarting_instances}")
         print(f"🔍 DEBUG: Current instance index: {current_instance_index}")
         
         if not available_instances:
@@ -113,33 +117,45 @@ class LoadBalancer:
     def restart_instance(self, instance_id):
         """Restart Docker Compose instance"""
         try:
+            # Immediately mark as restarting to stop new requests
+            with stats_lock:
+                instance_stats[instance_id]['status'] = 'restarting'
+                instance_stats[instance_id]['last_restart'] = datetime.now()
+            
+            logger.info(f"🔄 Starting restart of {instance_id} - traffic will route to other instances")
+            
             compose_file = INSTANCES[instance_id]['compose_file']
             
             # Change to firecrawl directory
             os.chdir(FIRECRAWL_PATH)
             
             # Stop instance
+            logger.info(f"🛑 Stopping {instance_id}...")
             subprocess.run([
                 'docker', 'compose', '-f', compose_file, 'down'
             ], check=True)
             
             # Start instance
+            logger.info(f"🚀 Starting {instance_id}...")
             subprocess.run([
                 'docker', 'compose', '-f', compose_file, 'up', '-d'
             ], check=True)
             
             with stats_lock:
                 instance_stats[instance_id]['request_count'] = 0
-                instance_stats[instance_id]['last_restart'] = datetime.now()
-                instance_stats[instance_id]['status'] = 'restarting'
             
-            logger.info(f"Restarted instance {instance_id}")
+            logger.info(f"⏳ Waiting for {instance_id} to be ready...")
             
             # Wait for instance to be ready
             time.sleep(10)
             
+            logger.info(f"✅ {instance_id} restart completed and ready for traffic")
+            
         except Exception as e:
-            logger.error(f"Failed to restart instance {instance_id}: {e}")
+            logger.error(f"❌ Failed to restart instance {instance_id}: {e}")
+            # Set back to unhealthy if restart failed
+            with stats_lock:
+                instance_stats[instance_id]['status'] = 'unhealthy'
     
     def get_container_stats(self, instance_id):
         """Get CPU and memory stats for instance containers"""
@@ -208,14 +224,17 @@ def monitor_instances():
                 cpu_usage, memory_usage = load_balancer.get_container_stats(instance_id)
                 
                 with stats_lock:
-                    instance_stats[instance_id]['status'] = 'healthy' if is_healthy else 'unhealthy'
+                    # Don't override 'restarting' status during health checks
+                    if instance_stats[instance_id]['status'] != 'restarting':
+                        instance_stats[instance_id]['status'] = 'healthy' if is_healthy else 'unhealthy'
                     instance_stats[instance_id]['cpu_usage'] = cpu_usage
                     instance_stats[instance_id]['memory_usage'] = memory_usage
                     
                     # Check if instance needs restart (100 requests)
                     if (instance_stats[instance_id]['request_count'] >= 100 and 
                         instance_stats[instance_id]['status'] == 'healthy'):
-                        logger.info(f"Instance {instance_id} reached 100 requests, restarting...")
+                        logger.info(f"🎯 Instance {instance_id} reached 100 requests, triggering restart...")
+                        logger.info(f"🔄 Other instances will handle traffic during restart")
                         threading.Thread(
                             target=load_balancer.restart_instance, 
                             args=(instance_id,)
