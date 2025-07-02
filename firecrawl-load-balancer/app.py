@@ -24,19 +24,19 @@ INSTANCES = {
         'url': 'http://localhost:3002',
         'compose_file': 'docker-compose-instance1.yaml',
         'port': 3002,
-        'restart_threshold': 80  # Restart at 80 requests
+        'restart_threshold': 100  # Restart at 80 requests
     },
     'instance2': {
         'url': 'http://localhost:3006', 
         'compose_file': 'docker-compose-instance2.yaml',
         'port': 3006,
-        'restart_threshold': 100  # Restart at 100 requests
+        'restart_threshold': 200  # Restart at 100 requests
     },
     'instance3': {
         'url': 'http://localhost:3010',
         'compose_file': 'docker-compose-instance3.yaml', 
         'port': 3010,
-        'restart_threshold': 120  # Restart at 120 requests
+        'restart_threshold': 300  # Restart at 120 requests
     }
 }
 
