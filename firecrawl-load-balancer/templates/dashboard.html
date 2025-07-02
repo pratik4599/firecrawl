@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firecrawl Load Balancer Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin-bottom: 0.5rem;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-left: 10px;
+        }
+        
+        .status-healthy { background-color: #28a745; }
+        .status-unhealthy { background-color: #dc3545; }
+        .status-restarting { background-color: #ffc107; }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .card h3 {
+            color: #666;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+        
+        .card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .instances-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .instance-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .instance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #eee;
+        }
+        
+        .instance-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        .instance-url {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .restart-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        
+        .restart-btn:hover {
+            background: #c82333;
+        }
+        
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-label {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 0.25rem;
+        }
+        
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+        }
+        
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .chart-container h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+        
+        .auto-refresh {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.9);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        .progress-bar {
+            background: #e9ecef;
+            border-radius: 10px;
+            height: 20px;
+            margin: 0.5rem 0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+            border-radius: 10px;
+        }
+        
+        .progress-cpu { background: linear-gradient(90deg, #28a745, #ffc107, #dc3545); }
+        .progress-memory { background: linear-gradient(90deg, #17a2b8, #6f42c1); }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .instances-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔥 Firecrawl Load Balancer Dashboard</h1>
+        <p>Real-time monitoring and management of Firecrawl instances</p>
+    </div>
+    
+    <div class="auto-refresh">
+        Auto-refresh: <span id="refresh-countdown">10</span>s
+    </div>
+    
+    <div class="container">
+        <!-- Summary Cards -->
+        <div class="summary-cards">
+            <div class="card">
+                <h3>Total Requests</h3>
+                <div class="value" id="total-requests">0</div>
+            </div>
+            <div class="card">
+                <h3>Active Requests</h3>
+                <div class="value" id="active-requests">0</div>
+            </div>
+            <div class="card">
+                <h3>Healthy Instances</h3>
+                <div class="value" id="healthy-instances">0/3</div>
+            </div>
+            <div class="card">
+                <h3>Average Response Time</h3>
+                <div class="value" id="avg-response-time">0ms</div>
+            </div>
+        </div>
+        
+        <!-- Instance Cards -->
+        <div class="instances-grid" id="instances-container">
+            <!-- Instance cards will be populated by JavaScript -->
+        </div>
+        
+        <!-- Charts -->
+        <div class="charts-section">
+            <div class="chart-container">
+                <h3>Requests Per Instance</h3>
+                <canvas id="requestsChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Resource Usage</h3>
+                <canvas id="resourceChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let requestsChart, resourceChart;
+        let refreshCountdown = 10;
+        
+        // Initialize charts
+        function initCharts() {
+            const requestsCtx = document.getElementById('requestsChart').getContext('2d');
+            requestsChart = new Chart(requestsCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Instance 1', 'Instance 2', 'Instance 3'],
+                    datasets: [{
+                        label: 'Total Requests',
+                        data: [0, 0, 0],
+                        backgroundColor: ['#667eea', '#764ba2', '#f093fb']
+                    }, {
+                        label: 'Active Requests',
+                        data: [0, 0, 0],
+                        backgroundColor: ['#ffc107', '#28a745', '#dc3545']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            
+            const resourceCtx = document.getElementById('resourceChart').getContext('2d');
+            resourceChart = new Chart(resourceCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Instance 1 CPU',
+                        data: [],
+                        borderColor: '#667eea',
+                        fill: false
+                    }, {
+                        label: 'Instance 2 CPU',
+                        data: [],
+                        borderColor: '#764ba2',
+                        fill: false
+                    }, {
+                        label: 'Instance 3 CPU',
+                        data: [],
+                        borderColor: '#f093fb',
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Fetch and update dashboard data
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                // Update summary cards
+                document.getElementById('total-requests').textContent = data.totals.total_requests;
+                document.getElementById('active-requests').textContent = data.totals.active_requests;
+                document.getElementById('healthy-instances').textContent = 
+                    `${data.totals.healthy_instances}/${data.totals.total_instances}`;
+                
+                // Calculate average response time
+                let totalResponseTime = 0;
+                let responseCount = 0;
+                Object.values(data.instances).forEach(instance => {
+                    if (instance.response_times.length > 0) {
+                        totalResponseTime += instance.response_times.reduce((a, b) => a + b, 0);
+                        responseCount += instance.response_times.length;
+                    }
+                });
+                const avgResponseTime = responseCount > 0 ? (totalResponseTime / responseCount * 1000).toFixed(0) : 0;
+                document.getElementById('avg-response-time').textContent = `${avgResponseTime}ms`;
+                
+                // Update instance cards
+                updateInstanceCards(data.instances);
+                
+                // Update charts
+                updateCharts(data);
+                
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            }
+        }
+        
+        function updateInstanceCards(instances) {
+            const container = document.getElementById('instances-container');
+            container.innerHTML = '';
+            
+            Object.entries(instances).forEach(([instanceId, stats]) => {
+                const card = document.createElement('div');
+                card.className = 'instance-card';
+                
+                const statusClass = `status-${stats.status}`;
+                const progressToRestart = Math.min((stats.request_count / 100) * 100, 100);
+                
+                card.innerHTML = `
+                    <div class="instance-header">
+                        <div>
+                            <div class="instance-title">
+                                ${instanceId.toUpperCase()}
+                                <span class="status-indicator ${statusClass}"></span>
+                            </div>
+                            <div class="instance-url">Port: ${getPortForInstance(instanceId)}</div>
+                        </div>
+                        <button class="restart-btn" onclick="restartInstance('${instanceId}')">
+                            Restart
+                        </button>
+                    </div>
+                    
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <div class="stat-label">Requests</div>
+                            <div class="stat-value">${stats.total_requests}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Active</div>
+                            <div class="stat-value">${stats.active_requests}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Errors</div>
+                            <div class="stat-value">${stats.error_count}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Status</div>
+                            <div class="stat-value">${stats.status}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 1rem;">
+                        <div class="stat-label">CPU Usage: ${stats.cpu_usage.toFixed(1)}%</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill progress-cpu" style="width: ${stats.cpu_usage}%"></div>
+                        </div>
+                        
+                        <div class="stat-label">Memory Usage: ${stats.memory_usage.toFixed(1)}%</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill progress-memory" style="width: ${stats.memory_usage}%"></div>
+                        </div>
+                        
+                        <div class="stat-label">Progress to Restart: ${progressToRestart.toFixed(0)}%</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${progressToRestart}%; background: linear-gradient(90deg, #28a745, #ffc107, #dc3545)"></div>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+        
+        function updateCharts(data) {
+            const instances = Object.values(data.instances);
+            
+            // Update requests chart
+            requestsChart.data.datasets[0].data = instances.map(i => i.total_requests);
+            requestsChart.data.datasets[1].data = instances.map(i => i.active_requests);
+            requestsChart.update();
+            
+            // Update resource chart (keep last 20 data points)
+            const now = new Date().toLocaleTimeString();
+            if (resourceChart.data.labels.length >= 20) {
+                resourceChart.data.labels.shift();
+                resourceChart.data.datasets.forEach(dataset => dataset.data.shift());
+            }
+            
+            resourceChart.data.labels.push(now);
+            resourceChart.data.datasets[0].data.push(instances[0].cpu_usage);
+            resourceChart.data.datasets[1].data.push(instances[1].cpu_usage);
+            resourceChart.data.datasets[2].data.push(instances[2].cpu_usage);
+            resourceChart.update();
+        }
+        
+        function getPortForInstance(instanceId) {
+            const portMap = {
+                'instance1': 3002,
+                'instance2': 3006,
+                'instance3': 3010
+            };
+            return portMap[instanceId] || 'Unknown';
+        }
+        
+        async function restartInstance(instanceId) {
+            if (confirm(`Are you sure you want to restart ${instanceId}?`)) {
+                try {
+                    const response = await fetch(`/admin/restart/${instanceId}`, {
+                        method: 'POST'
+                    });
+                    const result = await response.json();
+                    alert(result.message);
+                } catch (error) {
+                    alert('Error restarting instance: ' + error.message);
+                }
+            }
+        }
+        
+        // Countdown timer for auto-refresh
+        function updateCountdown() {
+            document.getElementById('refresh-countdown').textContent = refreshCountdown;
+            refreshCountdown--;
+            
+            if (refreshCountdown < 0) {
+                refreshCountdown = 10;
+                updateDashboard();
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            updateDashboard();
+            
+            // Set up auto-refresh every 10 seconds
+            setInterval(updateCountdown, 1000);
+        });
+    </script>
+</body>
+</html> 
