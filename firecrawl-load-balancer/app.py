@@ -85,7 +85,7 @@ class LoadBalancer:
         """Check if instance is healthy"""
         try:
             instance_url = INSTANCES[instance_id]['url']
-            response = requests.get(f"{instance_url}/health", timeout=5)
+            response = requests.get(f"{instance_url}/", timeout=5)
             return response.status_code == 200
         except:
             return False
@@ -352,4 +352,4 @@ def reset_stats(instance_id):
     return jsonify({'message': f'Reset stats for instance {instance_id}'})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True) 
+    app.run(host='0.0.0.0', port=5001, debug=True) 

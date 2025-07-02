@@ -144,7 +144,7 @@ time.sleep(10)  # Change this number
 
 ### Health Checks
 The load balancer continuously checks:
-- Instance availability via `/health` endpoint
+- Instance availability via base `/` endpoint
 - Container CPU and memory usage
 - Request success/failure rates
 - Response times
@@ -164,9 +164,9 @@ The load balancer continuously checks:
 docker ps | grep firecrawl
 
 # Check if ports are accessible
-curl http://localhost:3002/health
-curl http://localhost:3006/health
-curl http://localhost:3010/health
+curl http://localhost:3002/
+curl http://localhost:3006/
+curl http://localhost:3010/
 ```
 
 #### Docker Commands Fail
