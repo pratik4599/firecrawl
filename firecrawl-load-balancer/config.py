@@ -26,8 +26,8 @@ INSTANCES = {
     }
 }
 
-# Auto-restart settings
-AUTO_RESTART_THRESHOLD = 100  # Restart after this many requests
+# Auto-restart settings (staggered per instance)
+# Instance 1: 80 requests, Instance 2: 100 requests, Instance 3: 120 requests  
 HEALTH_CHECK_INTERVAL = 10    # Seconds between health checks
 REQUEST_TIMEOUT = 300         # Seconds for request timeout
 
@@ -37,6 +37,7 @@ REQUEST_TIMEOUT = 300         # Seconds for request timeout
 # 2. No new requests routed to restarting instance
 # 3. Other healthy instances handle all traffic
 # 4. Instance rejoins rotation when restart completes
+# 5. Staggered thresholds prevent simultaneous restarts
 
 # Dashboard settings
 DASHBOARD_REFRESH_INTERVAL = 10  # Seconds

@@ -18,22 +18,25 @@ app.config['SECRET_KEY'] = 'your-secret-key-here'
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Instance configuration
+# Instance configuration with staggered restart thresholds
 INSTANCES = {
     'instance1': {
         'url': 'http://localhost:3002',
         'compose_file': 'docker-compose-instance1.yaml',
-        'port': 3002
+        'port': 3002,
+        'restart_threshold': 80  # Restart at 80 requests
     },
     'instance2': {
         'url': 'http://localhost:3006', 
         'compose_file': 'docker-compose-instance2.yaml',
-        'port': 3006
+        'port': 3006,
+        'restart_threshold': 100  # Restart at 100 requests
     },
     'instance3': {
         'url': 'http://localhost:3010',
         'compose_file': 'docker-compose-instance3.yaml', 
-        'port': 3010
+        'port': 3010,
+        'restart_threshold': 120  # Restart at 120 requests
     }
 }
 
@@ -230,10 +233,11 @@ def monitor_instances():
                     instance_stats[instance_id]['cpu_usage'] = cpu_usage
                     instance_stats[instance_id]['memory_usage'] = memory_usage
                     
-                    # Check if instance needs restart (100 requests)
-                    if (instance_stats[instance_id]['request_count'] >= 100 and 
+                    # Check if instance needs restart (staggered thresholds)
+                    restart_threshold = INSTANCES[instance_id]['restart_threshold']
+                    if (instance_stats[instance_id]['request_count'] >= restart_threshold and 
                         instance_stats[instance_id]['status'] == 'healthy'):
-                        logger.info(f"🎯 Instance {instance_id} reached 100 requests, triggering restart...")
+                        logger.info(f"🎯 Instance {instance_id} reached {restart_threshold} requests, triggering restart...")
                         logger.info(f"🔄 Other instances will handle traffic during restart")
                         threading.Thread(
                             target=load_balancer.restart_instance, 
@@ -291,11 +295,18 @@ def get_stats():
 
 @app.route('/v1/scrape', methods=['POST'])
 def scrape_v1():
-    """V1 scrape endpoint"""
+    """V1 scrape endpoint - accepts full Firecrawl API parameters"""
     instance_id = load_balancer.get_next_instance()
     
     if not instance_id:
         return jsonify({'error': 'No healthy instances available'}), 503
+    
+    # Validate request has required data
+    if not request.json:
+        return jsonify({'error': 'Request body is required'}), 400
+    
+    if 'url' not in request.json:
+        return jsonify({'error': 'URL parameter is required'}), 400
     
     with stats_lock:
         instance_stats[instance_id]['active_requests'] += 1
@@ -308,18 +319,35 @@ def scrape_v1():
         request_timestamp = datetime.now()
         
         # Get URL from request body for logging
-        request_url = request.json.get('url', 'Unknown') if request.json else 'Unknown'
+        request_url = request.json.get('url', 'Unknown')
+        
+        # Forward all parameters to the Firecrawl instance
+        payload = {
+            'url': request.json.get('url'),
+            'formats': request.json.get('formats', ["html"]),
+            'timeout': request.json.get('timeout', 60000),
+            'includeTags': request.json.get('includeTags', ['metadata', 'body', 'head']),
+            'onlyMainContent': request.json.get('onlyMainContent', True)
+        }
+        
+        # Include any additional parameters that might be sent
+        for key, value in request.json.items():
+            if key not in payload:
+                payload[key] = value
+        
+        logger.info(f"🌐 Routing to {instance_id}: {request_url} with params: {list(payload.keys())}")
         
         response = requests.post(
             f"{instance_url}/v1/scrape",
-            json=request.json,
+            json=payload,
             headers={key: value for key, value in request.headers if key != 'Host'},
             timeout=300
         )
         
         response_time = time.time() - start_time
         
-        # Log the request
+        # Log the request with parameters
+        param_info = f"formats:{payload.get('formats', 'default')}, timeout:{payload.get('timeout', 'default')}, onlyMain:{payload.get('onlyMainContent', 'default')}"
         with request_log_lock:
             request_log.append({
                 'timestamp': request_timestamp.strftime('%H:%M:%S'),
@@ -327,7 +355,8 @@ def scrape_v1():
                 'url': request_url[:50] + '...' if len(request_url) > 50 else request_url,
                 'status': 'Success' if response.status_code == 200 else f'Error {response.status_code}',
                 'response_time': f'{response_time:.2f}s',
-                'status_code': response.status_code
+                'status_code': response.status_code,
+                'params': param_info[:100] + '...' if len(param_info) > 100 else param_info
             })
         
         with stats_lock:
@@ -340,6 +369,7 @@ def scrape_v1():
         response_time = time.time() - start_time
         
         # Log the failed request
+        param_info = f"formats:{payload.get('formats', 'default') if 'payload' in locals() else 'unknown'}, timeout:{payload.get('timeout', 'default') if 'payload' in locals() else 'unknown'}"
         with request_log_lock:
             request_log.append({
                 'timestamp': request_timestamp.strftime('%H:%M:%S'),
@@ -347,7 +377,8 @@ def scrape_v1():
                 'url': request_url[:50] + '...' if len(request_url) > 50 else request_url,
                 'status': 'Failed',
                 'response_time': f'{response_time:.2f}s',
-                'status_code': 500
+                'status_code': 500,
+                'params': param_info[:100] + '...' if len(param_info) > 100 else param_info
             })
         
         with stats_lock:

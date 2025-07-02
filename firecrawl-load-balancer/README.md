@@ -5,12 +5,14 @@ A Flask-based load balancer for managing multiple Firecrawl instances with real-
 ## 🚀 Features
 
 - **Load Balancing**: Round-robin distribution of requests across 3 Firecrawl instances
-- **Auto-Restart**: Automatically restarts instances after 100 requests
+- **Full Firecrawl API Support**: Forwards all parameters (url, formats, timeout, includeTags, onlyMainContent)
+- **Auto-Restart**: Staggered restarts (80/100/120 requests) to prevent simultaneous downtime
 - **Real-time Monitoring**: Live dashboard with CPU, memory, and request metrics
 - **Health Checks**: Continuous monitoring of instance health
 - **Manual Controls**: Restart instances and reset stats manually
 - **Request Tracking**: Track total requests, active requests, and errors per instance
 - **Resource Monitoring**: CPU and memory usage per instance
+- **Parameter Logging**: Track which parameters are being used in requests
 
 ## 📋 Prerequisites
 
@@ -64,9 +66,31 @@ Visit `http://localhost:5001` to see the real-time dashboard with:
 
 ### API Endpoints
 
+#### Supported Parameters
+The load balancer accepts all standard Firecrawl parameters:
+
+- **url** (required): The URL to scrape
+- **formats** (optional): Output formats, defaults to `["html"]`
+- **timeout** (optional): Request timeout in milliseconds, defaults to `60000`
+- **includeTags** (optional): HTML tags to include, defaults to `['metadata', 'body', 'head']`
+- **onlyMainContent** (optional): Extract only main content, defaults to `true`
+- **Additional parameters**: Any other Firecrawl parameters are forwarded as-is
+
 #### Scrape Endpoint (Load Balanced)
 ```bash
-# V1 Scrape  
+# V1 Scrape with full parameters
+curl -X POST "http://localhost:5001/v1/scrape" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com",
+    "formats": ["html"],
+    "timeout": 60000,
+    "includeTags": ["metadata", "body", "head"],
+    "onlyMainContent": true
+  }'
+
+# Minimal request (only URL required)
 curl -X POST "http://localhost:5001/v1/scrape" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
@@ -96,7 +120,7 @@ Each instance shows:
 - **Error Count**: Failed requests
 - **CPU Usage**: Real-time CPU percentage
 - **Memory Usage**: Real-time memory percentage
-- **Progress to Restart**: Visual bar showing progress to 100 requests
+- **Progress to Restart**: Visual bar showing progress to restart threshold (80/100/120)
 
 ### Charts
 - **Requests Per Instance**: Bar chart showing request distribution
@@ -120,11 +144,24 @@ INSTANCES = {
 }
 ```
 
-### Auto-Restart Threshold
-Change the restart threshold (default: 100 requests):
+### Auto-Restart Thresholds
+Staggered restart thresholds prevent simultaneous restarts:
 ```python
-# In monitor_instances() function
-if instance_stats[instance_id]['request_count'] >= 100:  # Change this number
+# Instance configuration with staggered restart thresholds
+INSTANCES = {
+    'instance1': {
+        'url': 'http://localhost:3002',
+        'restart_threshold': 80  # Restart at 80 requests
+    },
+    'instance2': {
+        'url': 'http://localhost:3006',
+        'restart_threshold': 100  # Restart at 100 requests
+    },
+    'instance3': {
+        'url': 'http://localhost:3010',
+        'restart_threshold': 120  # Restart at 120 requests
+    }
+}
 ```
 
 ### Monitoring Interval
@@ -144,7 +181,7 @@ The load balancer continuously checks:
 - Response times
 
 ### Automatic Actions
-- **Auto-restart**: Instances restart after 100 requests
+- **Auto-restart**: Staggered restarts (80/100/120 requests) prevent simultaneous downtime
 - **Health monitoring**: Unhealthy instances removed from rotation
 - **Error tracking**: Failed requests logged and counted
 
@@ -187,7 +224,7 @@ The Flask app logs all important events:
 
 ## 📈 Performance Tips
 
-1. **Adjust Restart Threshold**: Lower values (50-75) for more frequent restarts
+1. **Adjust Restart Thresholds**: Modify staggered values (e.g., 60/80/100) for more frequent restarts
 2. **Monitor Resource Usage**: Keep CPU below 80% per instance
 3. **Load Test**: Use the dashboard to monitor under load
 4. **Database Connections**: Ensure your database can handle 3x connections

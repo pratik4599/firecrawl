@@ -342,11 +342,12 @@
                     <table class="request-table">
                         <thead>
                             <tr>
-                                <th>Time</th>
-                                <th>Instance</th>
-                                <th>URL</th>
-                                <th>Status</th>
-                                <th>Response Time</th>
+                                                    <th>Time</th>
+                    <th>Instance</th>
+                    <th>URL</th>
+                    <th>Status</th>
+                    <th>Response Time</th>
+                    <th>Parameters</th>
                             </tr>
                         </thead>
                         <tbody id="request-log-body">
@@ -470,7 +471,14 @@
                 card.className = 'instance-card';
                 
                 const statusClass = `status-${stats.status}`;
-                const progressToRestart = Math.min((stats.request_count / 100) * 100, 100);
+                // Get restart threshold for this instance
+                const thresholds = {
+                    'instance1': 80,
+                    'instance2': 100, 
+                    'instance3': 120
+                };
+                const threshold = thresholds[instanceId] || 100;
+                const progressToRestart = Math.min((stats.request_count / threshold) * 100, 100);
                 
                 card.innerHTML = `
                     <div class="instance-header">
@@ -516,7 +524,7 @@
                             <div class="progress-fill progress-memory" style="width: ${stats.memory_usage}%"></div>
                         </div>
                         
-                        <div class="stat-label">Progress to Restart: ${progressToRestart.toFixed(0)}%</div>
+                        <div class="stat-label">Progress to Restart: ${progressToRestart.toFixed(0)}% (${stats.request_count}/${threshold})</div>
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: ${progressToRestart}%; background: linear-gradient(90deg, #28a745, #ffc107, #dc3545)"></div>
                         </div>
@@ -577,6 +585,7 @@
                     <td title="${req.url}">${req.url}</td>
                     <td><span class="${statusClass}">${req.status}</span></td>
                     <td>${req.response_time}</td>
+                    <td style="font-size: 11px;" title="${req.params || 'N/A'}">${req.params || 'N/A'}</td>
                 `;
                 
                 tbody.appendChild(row);
