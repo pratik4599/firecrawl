@@ -16,7 +16,7 @@ fi
 
 INSTANCE_NAME="$1"
 COMPOSE_FILE="docker-compose-${INSTANCE_NAME}.yaml"
-FIRECRAWL_PATH="/Users/pratikshinde/Desktop/pubmatic/aq-repos/firecrawl"
+FIRECRAWL_PATH="/home/aqdev/pratik/firescale/firecrawl/"
 
 # Check if compose file exists
 if [ ! -f "$FIRECRAWL_PATH/$COMPOSE_FILE" ]; then
