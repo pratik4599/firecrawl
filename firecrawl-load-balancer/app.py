@@ -70,38 +70,12 @@ FIRECRAWL_PATH = '/home/aqdev/pratik/firescale/firecrawl'
 class LoadBalancer:
     def __init__(self):
         self.docker_client = None
-        self.sudo_password = "zaq12wsx"  # Sudo password for Docker commands
         try:
             self.docker_client = docker.from_env()
         except Exception as e:
             logger.warning(f"Docker client not available: {e}")
     
-    def _run_docker_command(self, cmd):
-        """Run Docker command with sudo authentication"""
-        try:
-            # First try without sudo (in case user is already in docker group)
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            return result
-        except subprocess.CalledProcessError:
-            # If that fails, try with sudo
-            logger.info(f"🔐 Using sudo for Docker command: {' '.join(cmd)}")
-            sudo_cmd = ['sudo', '-S'] + cmd
-            
-            process = subprocess.Popen(
-                sudo_cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            
-            stdout, stderr = process.communicate(input=f"{self.sudo_password}\n")
-            
-            if process.returncode != 0:
-                logger.error(f"Docker command failed: {stderr}")
-                raise subprocess.CalledProcessError(process.returncode, sudo_cmd, stderr)
-            
-            return process
+
     
     def get_next_instance(self):
         """Round-robin load balancing"""
@@ -146,7 +120,7 @@ class LoadBalancer:
             return False
     
     def restart_instance(self, instance_id):
-        """Restart Docker Compose instance"""
+        """Restart Docker Compose instance using shell script"""
         try:
             # Immediately mark as restarting to stop new requests
             with stats_lock:
@@ -154,59 +128,37 @@ class LoadBalancer:
                 instance_stats[instance_id]['last_restart'] = datetime.now()
             
             logger.info(f"🔄 Starting restart of {instance_id} - traffic will route to other instances")
+            logger.info(f"📜 Using restart script (estimated time: ~35 seconds)")
             
-            compose_file = INSTANCES[instance_id]['compose_file']
+            # Get the path to the restart script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            script_path = os.path.join(script_dir, 'restart-instance.sh')
             
-            # Change to firecrawl directory
-            os.chdir(FIRECRAWL_PATH)
+            # Run the restart script
+            logger.info(f"🚀 Executing restart script for {instance_id}...")
+            result = subprocess.run([script_path, instance_id], 
+                                  check=True, 
+                                  capture_output=True, 
+                                  text=True)
             
-            # Stop and remove all containers and networks
-            logger.info(f"🛑 Stopping and cleaning up {instance_id}...")
-            self._run_docker_command([
-                'docker', 'compose', '-f', compose_file, 'down', '--remove-orphans', '--volumes'
-            ])
+            # Log the script output
+            logger.info(f"📄 Script output:\n{result.stdout}")
+            if result.stderr:
+                logger.warning(f"⚠️ Script warnings:\n{result.stderr}")
             
-            # Additional cleanup: force remove any containers that might still exist
-            logger.info(f"🧹 Force cleaning any remaining containers for {instance_id}...")
-            try:
-                # Get container names for this instance
-                container_names = [
-                    f"firecrawl-api-{instance_id}",
-                    f"firecrawl-worker-{instance_id}",
-                    f"firecrawl-redis-{instance_id}",
-                    f"firecrawl-playwright-{instance_id}"
-                ]
-                
-                for container_name in container_names:
-                    try:
-                        self._run_docker_command([
-                            'docker', 'rm', '-f', container_name
-                        ])
-                    except:
-                        pass  # Don't fail if container doesn't exist
-            except Exception as cleanup_error:
-                logger.warning(f"⚠️ Container cleanup warning (non-critical): {cleanup_error}")
-            
-            # Wait a moment for complete cleanup
-            logger.info(f"⏳ Waiting for complete cleanup...")
-            time.sleep(3)
-            
-            # Start instance with force recreate
-            logger.info(f"🚀 Starting {instance_id} with fresh containers...")
-            self._run_docker_command([
-                'docker', 'compose', '-f', compose_file, 'up', '-d', '--force-recreate'
-            ])
-            
+            # Reset request count after successful restart
             with stats_lock:
                 instance_stats[instance_id]['request_count'] = 0
             
-            logger.info(f"⏳ Waiting for {instance_id} to be ready...")
+            logger.info(f"✅ {instance_id} restart completed successfully and ready for traffic")
             
-            # Wait for instance to be ready
-            time.sleep(10)
-            
-            logger.info(f"✅ {instance_id} restart completed and ready for traffic")
-            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ Restart script failed for {instance_id}: {e}")
+            logger.error(f"Script stdout: {e.stdout}")
+            logger.error(f"Script stderr: {e.stderr}")
+            # Set back to unhealthy if restart failed
+            with stats_lock:
+                instance_stats[instance_id]['status'] = 'unhealthy'
         except Exception as e:
             logger.error(f"❌ Failed to restart instance {instance_id}: {e}")
             # Set back to unhealthy if restart failed
