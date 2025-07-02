@@ -1,0 +1,94 @@
+name: firecrawl-instance1
+
+x-common-service: &common-service
+  build: apps/api
+  ulimits:
+    nofile:
+      soft: 65535
+      hard: 65535
+  networks:
+    - backend-instance1
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+x-common-env: &common-env
+  REDIS_URL: redis://redis-instance1:6379
+  REDIS_RATE_LIMIT_URL: redis://redis-instance1:6379
+  PLAYWRIGHT_MICROSERVICE_URL: http://playwright-service-instance1:3000/scrape
+  USE_DB_AUTHENTICATION: ${USE_DB_AUTHENTICATION}
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+  MODEL_NAME: ${MODEL_NAME}
+  MODEL_EMBEDDING_NAME: ${MODEL_EMBEDDING_NAME} 
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL} 
+  SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+  BULL_AUTH_KEY: ${BULL_AUTH_KEY}
+  TEST_API_KEY: ${TEST_API_KEY}
+  POSTHOG_API_KEY: ${POSTHOG_API_KEY}
+  POSTHOG_HOST: ${POSTHOG_HOST}
+  SUPABASE_ANON_TOKEN: ${SUPABASE_ANON_TOKEN}
+  SUPABASE_URL: ${SUPABASE_URL}
+  SUPABASE_SERVICE_TOKEN: ${SUPABASE_SERVICE_TOKEN}
+  SELF_HOSTED_WEBHOOK_URL: ${SELF_HOSTED_WEBHOOK_URL}
+  SERPER_API_KEY: ${SERPER_API_KEY}
+  SEARCHAPI_API_KEY: ${SEARCHAPI_API_KEY}
+  LOGGING_LEVEL: ${LOGGING_LEVEL}
+  PROXY_SERVER: ${PROXY_SERVER}
+  PROXY_USERNAME: ${PROXY_USERNAME}
+  PROXY_PASSWORD: ${PROXY_PASSWORD}
+  SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT}
+  SEARXNG_ENGINES: ${SEARXNG_ENGINES}
+  SEARXNG_CATEGORIES: ${SEARXNG_CATEGORIES}
+
+services:
+  playwright-service-instance1:
+    build: apps/playwright-service-ts
+    container_name: firecrawl-playwright-instance1
+    environment:
+      PORT: 3000
+      PROXY_SERVER: ${PROXY_SERVER}
+      PROXY_USERNAME: ${PROXY_USERNAME}
+      PROXY_PASSWORD: ${PROXY_PASSWORD}
+      BLOCK_MEDIA: ${BLOCK_MEDIA}
+    networks:
+      - backend-instance1
+
+  api-instance1:
+    <<: *common-service
+    container_name: firecrawl-api-instance1
+    environment:
+      <<: *common-env
+      HOST: "0.0.0.0"
+      PORT: 3002
+      FLY_PROCESS_GROUP: app
+      ENV: local
+    depends_on:
+      - redis-instance1
+      - playwright-service-instance1
+    ports:
+      - "3002:3002"
+    command: [ "pnpm", "run", "start:production" ]
+
+  worker-instance1:
+    <<: *common-service
+    container_name: firecrawl-worker-instance1
+    environment:
+      <<: *common-env
+      FLY_PROCESS_GROUP: worker
+      ENV: local
+    depends_on:
+      - redis-instance1
+      - playwright-service-instance1
+      - api-instance1
+    command: [ "pnpm", "run", "workers" ]
+
+  redis-instance1:
+    image: redis:alpine
+    container_name: firecrawl-redis-instance1
+    networks:
+      - backend-instance1
+    command: redis-server --bind 0.0.0.0
+
+networks:
+  backend-instance1:
+    driver: bridge 
