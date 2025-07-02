@@ -132,16 +132,38 @@ class LoadBalancer:
             # Change to firecrawl directory
             os.chdir(FIRECRAWL_PATH)
             
-            # Stop instance
-            logger.info(f"🛑 Stopping {instance_id}...")
+            # Stop and remove all containers and networks
+            logger.info(f"🛑 Stopping and cleaning up {instance_id}...")
             subprocess.run([
-                'docker', 'compose', '-f', compose_file, 'down'
+                'docker', 'compose', '-f', compose_file, 'down', '--remove-orphans', '--volumes'
             ], check=True)
             
-            # Start instance
-            logger.info(f"🚀 Starting {instance_id}...")
+            # Additional cleanup: force remove any containers that might still exist
+            logger.info(f"🧹 Force cleaning any remaining containers for {instance_id}...")
+            try:
+                # Get container names for this instance
+                container_names = [
+                    f"firecrawl-api-{instance_id}",
+                    f"firecrawl-worker-{instance_id}",
+                    f"firecrawl-redis-{instance_id}",
+                    f"firecrawl-playwright-{instance_id}"
+                ]
+                
+                for container_name in container_names:
+                    subprocess.run([
+                        'docker', 'rm', '-f', container_name
+                    ], check=False, capture_output=True)  # Don't fail if container doesn't exist
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Container cleanup warning (non-critical): {cleanup_error}")
+            
+            # Wait a moment for complete cleanup
+            logger.info(f"⏳ Waiting for complete cleanup...")
+            time.sleep(3)
+            
+            # Start instance with force recreate
+            logger.info(f"🚀 Starting {instance_id} with fresh containers...")
             subprocess.run([
-                'docker', 'compose', '-f', compose_file, 'up', '-d'
+                'docker', 'compose', '-f', compose_file, 'up', '-d', '--force-recreate'
             ], check=True)
             
             with stats_lock:
